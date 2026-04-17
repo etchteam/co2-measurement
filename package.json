@@ -1,0 +1,41 @@
+{
+  "name": "@etchteam/co2-measurement",
+  "version": "0.1.0",
+  "description": "Measure CO₂ per visit for any web page using Playwright, CDP and the Sustainable Web Design Model v4.",
+  "license": "MIT",
+  "author": "Etch <hey@etch.co>",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/etchteam/co2-measurement.git"
+  },
+  "bin": {
+    "measure-co2": "./measure-co2.js"
+  },
+  "main": "./measure-co2.js",
+  "scripts": {
+    "measure": "node measure-co2.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "measure-co2.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "co2",
+    "emissions",
+    "sustainability",
+    "playwright",
+    "sustainable-web-design",
+    "swdm",
+    "green-web"
+  ],
+  "dependencies": {
+    "@tgwf/co2": "^0.18.0",
+    "playwright": "^1.56.1"
+  }
+}

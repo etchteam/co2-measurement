@@ -1,0 +1,29 @@
+{
+  "model": "SWDM v4 (CO2.js)",
+  "results": [
+    {
+      "url": "https://etch.co/",
+      "host": "etch.co",
+      "green": true,
+      "totalBytes": 329877,
+      "totalKB": 322.1,
+      "perVisitGrams": 0.0399,
+      "grade": "A+",
+      "byType": {
+        "font/woff2": "203.6 KB",
+        "image/svg+xml": "73.6 KB",
+        "text/html": "15.9 KB",
+        "text/css": "13.6 KB",
+        "text/javascript": "9.2 KB",
+        "application/javascript": "5.2 KB",
+        "application/json": "0.6 KB",
+        "application/speculationrules+json": "0.4 KB"
+      },
+      "byDomain": {
+        "etch.co": "318.4 KB",
+        "cloud.umami.is": "3.2 KB",
+        "api-gateway.umami.dev": "0.6 KB"
+      }
+    }
+  ]
+}

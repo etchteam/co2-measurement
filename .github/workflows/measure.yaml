@@ -1,0 +1,55 @@
+---
+name: 🌱 CO₂ measurement
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: 'Space-separated URLs to measure'
+        required: false
+        default: 'https://example.com/'
+  schedule:
+    # First day of each month, 06:00 UTC.
+    - cron: '0 6 1 * *'
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions: read-all
+
+jobs:
+  measure:
+    name: 🌱 Measure
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - name: Measure
+        run: |
+          URLS="${{ inputs.urls }}"
+          if [ -z "$URLS" ]; then URLS="https://example.com/"; fi
+          node measure-co2.js --out co2.json --badges-dir badges $URLS
+      - name: Open PR with refreshed measurement
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          commit-message: 'chore: refresh CO₂ measurement'
+          title: 'chore: refresh CO₂ measurement'
+          body: |
+            Scheduled CO₂ measurement refresh.
+
+            See `co2.json` for the full transfer/grade breakdown.
+          branch: chore/co2-refresh
+          delete-branch: true
+          add-paths: |
+            co2.json
+            badges/**
