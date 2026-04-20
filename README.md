@@ -23,8 +23,10 @@ Requires Node 22+.
 ## Usage
 
 ```sh
-node measure-co2.js [--out <file>] [--badges-dir <dir>] <url> [<url> ...]
+node measure-co2.js [--out <file>] [--badges-dir <dir>] <target> [<target> ...]
 ```
+
+Each `<target>` is either a bare URL or `archetype=url` (e.g. `home=https://etch.co/`). Naming a target with an archetype adds it to an `archetypes` map in the JSON output, so consumers can look up the number for a specific page type without scanning the whole `results` array.
 
 Measure one URL, write everything to disk:
 
@@ -32,13 +34,14 @@ Measure one URL, write everything to disk:
 node measure-co2.js --out co2.json --badges-dir badges https://etch.co/
 ```
 
-Measure several pages at once:
+Measure a representative page per archetype:
 
 ```sh
 node measure-co2.js --out co2.json --badges-dir badges \
-  https://etch.co/ \
-  https://etch.co/blog/ \
-  https://etch.co/team/
+  home=https://etch.co/ \
+  blog-index=https://etch.co/blog/ \
+  post=https://etch.co/blog/a-post/ \
+  team=https://etch.co/team/
 ```
 
 Skip `--out` and/or `--badges-dir` to just print the JSON to stdout.
@@ -50,6 +53,16 @@ Skip `--out` and/or `--badges-dir` to just print the JSON to stdout.
 ```json
 {
   "model": "SWDM v4 (CO2.js)",
+  "averagePerVisitGrams": 0.0399,
+  "archetypes": {
+    "home": {
+      "url": "https://etch.co/",
+      "perVisitGrams": 0.0399,
+      "grade": "A+",
+      "green": true,
+      "totalKB": 322.1
+    }
+  },
   "results": [
     {
       "url": "https://etch.co/",
@@ -59,12 +72,16 @@ Skip `--out` and/or `--badges-dir` to just print the JSON to stdout.
       "totalKB": 322.1,
       "perVisitGrams": 0.0399,
       "grade": "A+",
+      "archetype": "home",
       "byType": { "font/woff2": "203.4 KB", "...": "..." },
       "byDomain": { "etch.co": "319.1 KB", "...": "..." }
     }
   ]
 }
 ```
+
+- `averagePerVisitGrams` is the arithmetic mean of `perVisitGrams` across all successful results — useful when you want a single site-wide number.
+- `archetypes` keys every named target (`home=`, `post=`, etc.) by its name, for per-page-type lookups. The [etch.co](https://etch.co) footer uses this to show the number for the archetype matching the current URL.
 
 Badges are written to `<badges-dir>/<host-and-path-slug>.svg`, e.g. `badges/etch-co.svg`, `badges/etch-co-blog.svg`.
 

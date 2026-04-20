@@ -26,26 +26,60 @@ const PAGE_TIMEOUT_MS = 60000;
 const SETTLE_MS = 1500;
 
 /**
- * Digital Carbon Rating thresholds (Website Carbon / SWDM convention), g per visit.
- * Ordered ascending by `max`; first row where `grams <= max` wins.
- * @type {Array<{ grade: string, max: number, color: string }>}
+ * Colour swatch per Digital Carbon Rating grade. Grade letters come from the
+ * `@tgwf/co2` library's v4 rating scale; this map just picks a display colour
+ * for each band.
+ * @type {Record<string, string>}
  */
-export const RATINGS = [
-  { grade: 'A+', max: 0.095, color: '#4c9a2a' },
-  { grade: 'A', max: 0.185, color: '#7ab317' },
-  { grade: 'B', max: 0.34, color: '#b4d33b' },
-  { grade: 'C', max: 0.49, color: '#f3c922' },
-  { grade: 'D', max: 0.65, color: '#f18b27' },
-  { grade: 'E', max: 0.85, color: '#dd4b1a' },
-  { grade: 'F', max: Infinity, color: '#b32d0c' },
-];
+export const GRADE_COLORS = {
+  'A+': '#4c9a2a',
+  A: '#7ab317',
+  B: '#b4d33b',
+  C: '#f3c922',
+  D: '#f18b27',
+  E: '#dd4b1a',
+  F: '#b32d0c',
+};
 
 /**
- * Maps a per-visit emission in grams to the matching {@link RATINGS} row.
- * @param {number} grams
- * @returns {{ grade: string, max: number, color: string }}
+ * Arithmetic mean of `perVisitGrams` across successful results.
+ * Returns `null` if none succeeded.
+ * @param {Array<{ perVisitGrams?: number, error?: string }>} results
+ * @returns {number | null}
  */
-export const rate = (grams) => RATINGS.find((r) => grams <= r.max);
+export function averagePerVisitGrams(results) {
+  const ok = results.filter(
+    (r) => !r.error && typeof r.perVisitGrams === 'number',
+  );
+  if (!ok.length) {
+    return null;
+  }
+  const total = ok.reduce((sum, r) => sum + r.perVisitGrams, 0);
+  return +(total / ok.length).toFixed(4);
+}
+
+/**
+ * Splits a positional target arg into `{ name, url }`.
+ * Supports `archetype=url` (e.g. `home=https://etch.co/`) so consumers can
+ * key the JSON by page type. Bare URLs get `name: null`.
+ *
+ * Name must be a lowercase slug (`[a-z][a-z0-9-]*`) and URL must start with
+ * `http://` or `https://`, otherwise the arg is treated as an anonymous URL.
+ *
+ * @param {string} arg
+ * @returns {{ name: string | null, url: string }}
+ */
+export function parseTarget(arg) {
+  const eq = arg.indexOf('=');
+  if (eq > 0) {
+    const name = arg.slice(0, eq);
+    const url = arg.slice(eq + 1);
+    if (/^[a-z][a-z0-9-]*$/.test(name) && /^https?:\/\//.test(url)) {
+      return { name, url };
+    }
+  }
+  return { name: null, url: arg };
+}
 
 /**
  * Renders a self-contained SVG badge — no external fonts or stylesheets, so
@@ -54,13 +88,13 @@ export const rate = (grams) => RATINGS.find((r) => grams <= r.max);
  * Width is computed from the value string length so longer grade/gram
  * combinations don't clip.
  *
- * @param {{ grams: number, totalKB: number, green: boolean }} params
+ * @param {{ grams: number, rating: string, totalKB: number, green: boolean }} params
  * @returns {string}
  */
-export function badgeSvg({ grams, totalKB, green }) {
-  const { grade, color } = rate(grams);
+export function badgeSvg({ grams, rating, totalKB, green }) {
+  const color = GRADE_COLORS[rating] ?? GRADE_COLORS.F;
   const label = 'CO₂/visit';
-  const value = `${grams.toFixed(3)}g · ${grade}${green ? ' · green host' : ''}`;
+  const value = `${grams.toFixed(3)}g · ${rating}${green ? ' · green host' : ''}`;
   const labelW = 80;
   const valueW = Math.max(110, value.length * 6.2 + 16);
   const total = labelW + valueW;
@@ -100,7 +134,7 @@ export function badgeFilename({ url }) {
 /**
  * Minimal flag parser — intentionally no `commander`/`yargs` dependency.
  * @param {string[]} argv
- * @returns {{ outPath: string | null, badgesDir: string | null, targets: string[] }}
+ * @returns {{ outPath: string | null, badgesDir: string | null, targets: Array<{ name: string | null, url: string }> }}
  */
 function parseArgs(argv) {
   let outPath = null;
@@ -118,7 +152,7 @@ function parseArgs(argv) {
       console.log(USAGE);
       process.exit(0);
     } else {
-      targets.push(a);
+      targets.push(parseTarget(a));
     }
   }
 
@@ -209,8 +243,8 @@ async function measure(browser, url, green) {
     await page.waitForTimeout(SETTLE_MS);
 
     const host = new URL(url).hostname;
-    const swd = new Co2({ model: 'swd', version: 4 });
-    const perVisitGrams = +swd.perVisit(totalBytes, green).toFixed(4);
+    const swd = new Co2({ model: 'swd', version: 4, rating: true });
+    const { total: gramsOfCO2, rating } = swd.perVisit(totalBytes, green);
 
     return {
       url,
@@ -218,8 +252,8 @@ async function measure(browser, url, green) {
       green,
       totalBytes,
       totalKB: +(totalBytes / 1024).toFixed(1),
-      perVisitGrams,
-      grade: rate(perVisitGrams).grade,
+      perVisitGrams: +gramsOfCO2.toFixed(4),
+      grade: rating,
       byType: Object.fromEntries(
         Object.entries(byType)
           .sort((a, b) => b[1] - a[1])
@@ -257,7 +291,7 @@ async function main() {
 
   // Resolve green-hosting once per unique hostname — it's a property of the
   // host, not the page.
-  const hosts = [...new Set(targets.map((u) => new URL(u).hostname))];
+  const hosts = [...new Set(targets.map((t) => new URL(t.url).hostname))];
   const greenByHost = Object.fromEntries(
     await Promise.all(hosts.map(async (h) => [h, await isGreen(h)])),
   );
@@ -266,16 +300,20 @@ async function main() {
   const results = [];
 
   try {
-    for (const url of targets) {
-      process.stderr.write(`measuring ${url}...\n`);
+    for (const target of targets) {
+      process.stderr.write(`measuring ${target.url}...\n`);
       try {
-        const host = new URL(url).hostname;
-        const result = await measure(browser, url, greenByHost[host]);
+        const host = new URL(target.url).hostname;
+        const result = await measure(browser, target.url, greenByHost[host]);
+        if (target.name) {
+          result.archetype = target.name;
+        }
         results.push(result);
 
         if (badgesDir) {
           const svg = badgeSvg({
             grams: result.perVisitGrams,
+            rating: result.grade,
             totalKB: result.totalKB,
             green: result.green,
           });
@@ -286,9 +324,14 @@ async function main() {
         }
       } catch (e) {
         process.stderr.write(
-          `measurement failed for ${url}: ${e.stack || e}\n`,
+          `measurement failed for ${target.url}: ${e.stack || e}\n`,
         );
-        results.push({ url, error: e.message, errorType: e.name });
+        results.push({
+          url: target.url,
+          archetype: target.name ?? undefined,
+          error: e.message,
+          errorType: e.name,
+        });
       }
     }
   } finally {
@@ -299,7 +342,24 @@ async function main() {
   const allFailed = failed.length === results.length;
 
   if (outPath && !failed.length) {
-    const payload = { model: 'SWDM v4 (CO2.js)', results };
+    const archetypes = {};
+    for (const r of results) {
+      if (r.archetype) {
+        archetypes[r.archetype] = {
+          url: r.url,
+          perVisitGrams: r.perVisitGrams,
+          grade: r.grade,
+          green: r.green,
+          totalKB: r.totalKB,
+        };
+      }
+    }
+    const payload = {
+      model: 'SWDM v4 (CO2.js)',
+      averagePerVisitGrams: averagePerVisitGrams(results),
+      archetypes,
+      results,
+    };
     await mkdir(dirname(outPath), { recursive: true });
     await writeFile(outPath, JSON.stringify(payload, null, 2) + '\n', 'utf8');
     process.stderr.write(`wrote → ${outPath}\n`);
